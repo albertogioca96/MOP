@@ -1,5 +1,5 @@
 import { useState, useCallback, createContext, useContext } from 'react'
-import type { Consultant, Client, Entry, HistorySnapshot, CapacityWarning, DayLabel } from '../types'
+import type { Consultant, Client, Entry, HistorySnapshot, CapacityWarning, ConflictLog, DayLabel } from '../types'
 import { entryKey } from '../types'
 import { SEED_CONSULTANTS, SEED_CLIENTS } from '../data/seedData'
 import { generateDraft } from '../engine/allocate'
@@ -22,6 +22,7 @@ function buildStore() {
   const [visibleDays, setVisibleDays] = useState(10)
   const [activeView,  setActiveView]  = useState<ActiveView>('planner')
   const [warnings,    setWarnings]    = useState<CapacityWarning[]>([])
+  const [conflicts,   setConflicts]   = useState<ConflictLog[]>([])
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [dayLabels,   setDayLabels]   = useState<Record<string, DayLabel>>({})
   const [logFocusClientId, setLogFocusClientId] = useState<string | null>(null)
@@ -50,8 +51,9 @@ function buildStore() {
 
   const handleGenerateDraft = useCallback(() => {
     setHistory(prev => pushSnapshot('Before draft', entries, prev))
-    const draft = generateDraft(clients, currentMonth, new Set<string>())
+    const { entries: draft, conflicts: newConflicts } = generateDraft(clients, currentMonth, new Set<string>())
     setEntries(draft)
+    setConflicts(newConflicts)
     afterEntriesChange(draft, 'draft')
   }, [clients, currentMonth, entries, afterEntriesChange])
 
@@ -128,6 +130,7 @@ function buildStore() {
     setHistory(prev => pushSnapshot('Before clear', entries, prev))
     setEntries({})
     setWarnings([])
+    setConflicts([])
   }, [entries])
 
   const handleZoomIn  = useCallback(() => setVisibleDays(v => Math.max(5, v - 1)),  [])
@@ -169,7 +172,7 @@ function buildStore() {
   return {
     consultants, clients, entries, currentMonth,
     history, brushClientId, brushMode,
-    visibleDays, activeView, warnings, toastMessage,
+    visibleDays, activeView, warnings, conflicts, toastMessage,
     dayLabels, logFocusClientId, logFocusDate,
     setActiveView, setBrushClientId, setBrushMode, setVisibleDays,
     setLogFocusClientId, setLogFocusDate,

@@ -12,10 +12,14 @@ export function PlannerView() {
     history,
     handleRollback,
     warnings,
+    conflicts,
     toastMessage,
     entries,
     brushMode,
+    clients,
   } = useStore()
+
+  const [conflictsOpen, setConflictsOpen] = useState(false)
 
   const [showHistory, setShowHistory] = useState(false)
   const entryCount = Object.keys(entries).length
@@ -144,6 +148,56 @@ export function PlannerView() {
               {w.consultantName} — {w.usedDays}/{w.maxDays}d
             </span>
           ))}
+        </div>
+      )}
+
+      {/* Conflicts bar */}
+      {conflicts.length > 0 && (
+        <div style={{ flexShrink: 0, background: '#1e1a2e', borderBottom: '1px solid #4c1d95' }}>
+          <button
+            onClick={() => setConflictsOpen(v => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              width: '100%', background: 'transparent', border: 'none',
+              padding: '6px 16px', cursor: 'pointer', textAlign: 'left',
+            }}
+          >
+            <span style={{ fontSize: 11, color: '#a78bfa', fontWeight: 700 }}>
+              {conflictsOpen ? '▾' : '▸'} ⚡ {conflicts.length} CONFLICT{conflicts.length > 1 ? 'S' : ''}
+            </span>
+            <span style={{ fontSize: 11, color: '#6d28d9' }}>
+              — lower-priority clients were bumped from their preferred day
+            </span>
+          </button>
+
+          {conflictsOpen && (
+            <div style={{ padding: '0 16px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {conflicts.map((c, i) => {
+                const client = clients.find(cl => cl.id === c.clientId)
+                const weekLabel = `W${c.weekIndex + 1}`
+                return (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    fontSize: 11, color: '#c4b5fd',
+                  }}>
+                    <span style={{
+                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                      background: client?.color ?? '#8b5cf6', display: 'inline-block',
+                    }} />
+                    <span style={{ fontWeight: 600, minWidth: 110 }}>{c.clientName}</span>
+                    <span style={{ color: '#6d28d9', minWidth: 24 }}>{weekLabel}</span>
+                    <span style={{ color: '#475569' }}>
+                      wanted <span style={{ color: '#a78bfa' }}>{c.preferredDate}</span>
+                      {c.allocatedDate
+                        ? <> → got <span style={{ color: '#7c3aed' }}>{c.allocatedDate}</span></>
+                        : <span style={{ color: '#ef4444' }}> → skipped (no free day)</span>
+                      }
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 

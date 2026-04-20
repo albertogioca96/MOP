@@ -57,6 +57,14 @@ export interface HistorySnapshot {
   entries: Record<string, Entry>
 }
 
+export interface ConflictLog {
+  clientId:      string
+  clientName:    string
+  weekIndex:     number        // 0-based week index in the month
+  preferredDate: string        // YYYY-MM-DD — closest workday to preferredWeekday
+  allocatedDate: string | null // YYYY-MM-DD — what was actually assigned (null = week skipped)
+}
+
 export interface CapacityWarning {
   consultantId: string
   consultantName: string

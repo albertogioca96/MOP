@@ -1,4 +1,4 @@
-import type { Client, Entry } from '../types'
+import type { Client, Entry, ConflictLog } from '../types'
 import {
   getDaysInMonth,
   formatDate,
@@ -8,10 +8,32 @@ import {
 } from '../utils/dateUtils'
 import { isFullDayFree } from './capacity'
 
+export interface DraftResult {
+  entries:   Record<string, Entry>
+  conflicts: ConflictLog[]
+}
+
 /**
- * Within a week, find the best workday for a client.
- * "Best" = closest ISO weekday to client.preferredWeekday,
- * not blocked by weekend/holiday, all team members free.
+ * Find the closest workday to preferredWeekday, ignoring capacity.
+ * Used to determine the "ideal" day so we can detect conflicts.
+ */
+function findPreferredDay(
+  week: Date[],
+  preferredWeekday: number,
+  holidays: Set<string>
+): Date | null {
+  const workdays = week.filter(d => !isWeekend(d) && !holidays.has(formatDate(d)))
+  if (workdays.length === 0) return null
+  return [...workdays].sort(
+    (a, b) =>
+      Math.abs(isoWeekday(a) - preferredWeekday) -
+      Math.abs(isoWeekday(b) - preferredWeekday)
+  )[0]
+}
+
+/**
+ * Within a week, find the best workday for a client respecting capacity.
+ * "Best" = closest ISO weekday to preferredWeekday where all team members are free.
  */
 function pickBestDay(
   week: Date[],
@@ -23,7 +45,6 @@ function pickBestDay(
   const workdays = week.filter(d => !isWeekend(d) && !holidays.has(formatDate(d)))
   if (workdays.length === 0) return null
 
-  // Sort ascending by distance from preferred weekday
   const sorted = [...workdays].sort(
     (a, b) =>
       Math.abs(isoWeekday(a) - preferredWeekday) -
@@ -43,53 +64,72 @@ function pickBestDay(
  * Generate a full draft allocation for the given month.
  *
  * Rules:
- * - Active clients only, sorted by priority (1 = highest)
+ * - Active clients only, sorted by priority score (assessed) or manual priority (fallback)
  * - 1 day per week per client (closest to preferredWeekday)
  * - Allocate full day (AM + PM) to the entire team
  * - Skip days where any team member already has an entry
+ *
+ * Returns both the entries map and a conflict log (days that were bumped or skipped).
  */
 export function generateDraft(
   clients: Client[],
   month: { year: number; month: number },
   holidays: Set<string>
-): Record<string, Entry> {
-  const result: Record<string, Entry> = {}
-  const days = getDaysInMonth(month.year, month.month)
+): DraftResult {
+  const result:    Record<string, Entry> = {}
+  const conflicts: ConflictLog[]         = []
+
+  const days  = getDaysInMonth(month.year, month.month)
   const weeks = splitIntoWeeks(days)
 
   const activeClients = clients
     .filter(c => c.isActive)
     .sort((a, b) => {
-      // Assessed clients take priority over unassessed ones
       const aHas = a.priorityScore !== undefined
       const bHas = b.priorityScore !== undefined
-      if (aHas && bHas)  return b.priorityScore! - a.priorityScore!  // higher score first
-      if (aHas && !bHas) return -1                                    // assessed beats unassessed
+      if (aHas && bHas)  return b.priorityScore! - a.priorityScore!
+      if (aHas && !bHas) return -1
       if (!aHas && bHas) return 1
-      return a.priority - b.priority                                  // fallback: manual number
+      return a.priority - b.priority
     })
 
   for (const client of activeClients) {
-    for (const week of weeks) {
-      const best = pickBestDay(week, client.preferredWeekday, holidays, result, client.team.memberIds)
-      if (!best) continue
+    for (const [weekIdx, week] of weeks.entries()) {
+      // What day would this client ideally want?
+      const preferred  = findPreferredDay(week, client.preferredWeekday, holidays)
+      // What day can it actually get given current allocations?
+      const best       = pickBestDay(week, client.preferredWeekday, holidays, result, client.team.memberIds)
 
-      const dateStr = formatDate(best)
+      const preferredStr = preferred ? formatDate(preferred) : null
+      const bestStr      = best      ? formatDate(best)      : null
+
+      // Conflict = client wanted a specific day but got bumped (or nothing)
+      if (preferredStr && bestStr !== preferredStr) {
+        conflicts.push({
+          clientId:      client.id,
+          clientName:    client.name,
+          weekIndex:     weekIdx,
+          preferredDate: preferredStr,
+          allocatedDate: bestStr,
+        })
+      }
+
+      if (!best) continue
 
       for (const memberId of client.team.memberIds) {
         for (const slot of ['AM', 'PM'] as const) {
-          const key = `${dateStr}__${slot}__${memberId}`
+          const key = `${bestStr}__${slot}__${memberId}`
           result[key] = {
-            date: dateStr,
+            date:         bestStr!,
             slot,
             consultantId: memberId,
-            clientId: client.id,
-            source: 'draft',
+            clientId:     client.id,
+            source:       'draft',
           }
         }
       }
     }
   }
 
-  return result
+  return { entries: result, conflicts }
 }

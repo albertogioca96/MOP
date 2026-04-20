@@ -21,7 +21,19 @@ const LABEL_ICON: Record<DayLabel, string> = {
 }
 
 export function PlannerGrid() {
-  const { consultants, currentMonth, dayLabels, visibleDays } = useStore()
+  const { consultants, clients, entries, currentMonth, dayLabels, visibleDays } = useStore()
+
+  // Per consultant: map clientId → unique day count
+  const consultantClientDays = useMemo(() => {
+    const map = new Map<string, Map<string, Set<string>>>()
+    for (const entry of Object.values(entries)) {
+      if (!map.has(entry.consultantId)) map.set(entry.consultantId, new Map())
+      const clientMap = map.get(entry.consultantId)!
+      if (!clientMap.has(entry.clientId)) clientMap.set(entry.clientId, new Set())
+      clientMap.get(entry.clientId)!.add(entry.date)
+    }
+    return map
+  }, [entries])
   const [menuDate, setMenuDate] = useState<string | null>(null)
   const [menuPos,  setMenuPos]  = useState({ x: 0, y: 0 })
 
@@ -195,6 +207,33 @@ export function PlannerGrid() {
                       }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>{consultant.name}</div>
                         <div style={{ fontSize: 10, color: '#475569', textTransform: 'capitalize', marginTop: 1 }}>{consultant.level}</div>
+                        {/* Per-client day allocation */}
+                        {(() => {
+                          const clientMap = consultantClientDays.get(consultant.id)
+                          if (!clientMap || clientMap.size === 0) return null
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 5 }}>
+                              {[...clientMap.entries()].map(([clientId, dates]) => {
+                                const cl = clients.find(c => c.id === clientId)
+                                if (!cl) return null
+                                return (
+                                  <div key={clientId} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span style={{
+                                      width: 6, height: 6, borderRadius: '50%',
+                                      background: cl.color, flexShrink: 0, display: 'inline-block',
+                                    }} />
+                                    <span style={{ fontSize: 9, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 72 }}>
+                                      {cl.name.split(' ')[0]}
+                                    </span>
+                                    <span style={{ fontSize: 9, fontWeight: 700, color: cl.color, marginLeft: 'auto' }}>
+                                      {dates.size}d
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )
+                        })()}
                       </td>
                     )}
 
