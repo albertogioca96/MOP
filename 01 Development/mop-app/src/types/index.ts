@@ -12,16 +12,28 @@ export interface Consultant {
   monthlyCapacityDays: number
 }
 
+export interface PriorityAssessment {
+  revenueSize:            number  // 1–5
+  growthPotential:        number  // 1–5
+  marginQuality:          number  // 1–5
+  relationshipFreshness:  number  // 1–5  (5 = brand-new client, 1 = 5+ yr settled)
+  strategicValue:         number  // 1–5
+}
+
 export interface Client {
   id: string
   name: string
   isActive: boolean
-  priority: number          // 1 = highest
+  priority: number          // 1 = highest (manual fallback)
   preferredWeekday: number  // 1=Mon … 5=Fri
   monthlyBudget: number     // €
   rates: Record<Seniority, number>
   team: { memberIds: string[] }
   color: string
+  // Priority assessment (optional — filled by wizard)
+  priorityAssessment?: PriorityAssessment
+  priorityScore?:      number           // 0–100 computed
+  priorityClass?:      'A' | 'B' | 'C'
 }
 
 // Key: `${date}__${slot}__${consultantId}`

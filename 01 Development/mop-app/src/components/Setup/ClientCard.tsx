@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useStore } from '../../store/useStore'
-import type { Client, Seniority } from '../../types'
+import type { Client, Seniority, PriorityAssessment } from '../../types'
 import { WEEKDAY_NAMES } from '../../utils/dateUtils'
+import { CLASS_COLOR } from '../../engine/priority'
+import { PriorityWizard } from './PriorityWizard'
 
 interface Props {
   client: Client
@@ -15,15 +17,12 @@ const LEVELS: Seniority[] = ['trainee', 'junior', 'middle', 'senior', 'partner']
 
 export function ClientCard({ client, autoEdit = false, onCancelNew }: Props) {
   const { consultants, handleUpdateClient } = useStore()
-  const [editing, setEditing] = useState(autoEdit)
-  const [draft,   setDraft]   = useState(client)
+  const [editing,    setEditing]    = useState(autoEdit)
+  const [draft,      setDraft]      = useState(client)
+  const [showWizard, setShowWizard] = useState(false)
 
-  const save = () => { handleUpdateClient(draft); setEditing(false) }
-  const cancel = () => {
-    setDraft(client)
-    setEditing(false)
-    onCancelNew?.()
-  }
+  const save   = () => { handleUpdateClient(draft); setEditing(false) }
+  const cancel = () => { setDraft(client); setEditing(false); onCancelNew?.() }
 
   const teamNames = client.team.memberIds
     .map(id => consultants.find(c => c.id === id)?.name ?? id)
@@ -39,6 +38,16 @@ export function ClientCard({ client, autoEdit = false, onCancelNew }: Props) {
   const setRate = (level: Seniority, val: number) =>
     setDraft(d => ({ ...d, rates: { ...d.rates, [level]: val } }))
 
+  // Wizard saves into draft — persisted only when the card is Saved
+  const handleWizardSave = (
+    assessment: PriorityAssessment,
+    score: number,
+    cls: 'A' | 'B' | 'C'
+  ) => {
+    setDraft(d => ({ ...d, priorityAssessment: assessment, priorityScore: score, priorityClass: cls }))
+    setShowWizard(false)
+  }
+
   return (
     <div style={{
       background: '#1e293b',
@@ -50,15 +59,39 @@ export function ClientCard({ client, autoEdit = false, onCancelNew }: Props) {
       flexDirection: 'column',
       gap: 10,
     }}>
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 10, height: 10, borderRadius: '50%', background: draft.color, flexShrink: 0, display: 'inline-block' }} />
+          <span style={{
+            width: 10, height: 10, borderRadius: '50%',
+            background: draft.color, flexShrink: 0, display: 'inline-block',
+          }} />
           {editing ? (
-            <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-              style={inputStyle} autoFocus />
+            <input
+              value={draft.name}
+              onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+              style={inputStyle}
+              autoFocus
+            />
           ) : (
-            <span style={{ fontWeight: 600, color: '#f1f5f9', fontSize: 14 }}>{client.name}</span>
+            <>
+              <span style={{ fontWeight: 600, color: '#f1f5f9', fontSize: 14 }}>{client.name}</span>
+              {client.priorityClass && (
+                <span style={{
+                  background: CLASS_COLOR[client.priorityClass] + '22',
+                  color: CLASS_COLOR[client.priorityClass],
+                  border: `1px solid ${CLASS_COLOR[client.priorityClass]}44`,
+                  borderRadius: 4,
+                  padding: '1px 7px',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  lineHeight: 1.6,
+                }}>
+                  {client.priorityClass}
+                </span>
+              )}
+            </>
           )}
         </div>
 
@@ -82,36 +115,73 @@ export function ClientCard({ client, autoEdit = false, onCancelNew }: Props) {
         </div>
       </div>
 
-      {/* Priority */}
+      {/* ── Priority ── */}
       <Row label="Priority">
-        {editing
-          ? <input type="number" min={1} max={10} value={draft.priority}
+        {editing ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              type="number" min={1} max={10} value={draft.priority}
               onChange={e => setDraft(d => ({ ...d, priority: Number(e.target.value) }))}
-              style={{ ...inputStyle, width: 64 }} />
-          : <span style={valueStyle}>#{client.priority}</span>}
+              style={{ ...inputStyle, width: 64 }}
+            />
+            <button
+              onClick={() => setShowWizard(true)}
+              style={{
+                background: '#8b5cf622', color: '#8b5cf6',
+                border: '1px solid #8b5cf644',
+                borderRadius: 5, padding: '3px 10px',
+                fontSize: 12, cursor: 'pointer', fontWeight: 600,
+              }}
+            >
+              ★ Assess
+            </button>
+            {draft.priorityClass && (
+              <span style={{
+                background: CLASS_COLOR[draft.priorityClass] + '22',
+                color: CLASS_COLOR[draft.priorityClass],
+                border: `1px solid ${CLASS_COLOR[draft.priorityClass]}44`,
+                borderRadius: 4, padding: '2px 8px',
+                fontSize: 11, fontWeight: 800,
+              }}>
+                {draft.priorityClass} · {draft.priorityScore}pts
+              </span>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={valueStyle}>#{client.priority}</span>
+            {client.priorityScore !== undefined && (
+              <span style={{ fontSize: 12, color: '#475569' }}>{client.priorityScore} pts</span>
+            )}
+          </div>
+        )}
       </Row>
 
-      {/* Preferred weekday */}
+      {/* ── Preferred weekday ── */}
       <Row label="Pref. day">
         {editing
-          ? <select value={draft.preferredWeekday}
+          ? <select
+              value={draft.preferredWeekday}
               onChange={e => setDraft(d => ({ ...d, preferredWeekday: Number(e.target.value) }))}
-              style={{ ...inputStyle, width: 'auto' }}>
+              style={{ ...inputStyle, width: 'auto' }}
+            >
               {[1,2,3,4,5].map(n => <option key={n} value={n}>{WEEKDAY_NAMES[n]}</option>)}
             </select>
           : <span style={valueStyle}>{WEEKDAY_NAMES[client.preferredWeekday]}</span>}
       </Row>
 
-      {/* Budget */}
+      {/* ── Budget ── */}
       <Row label="Budget">
         {editing
-          ? <input type="number" min={0} value={draft.monthlyBudget}
+          ? <input
+              type="number" min={0} value={draft.monthlyBudget}
               onChange={e => setDraft(d => ({ ...d, monthlyBudget: Number(e.target.value) }))}
-              style={{ ...inputStyle, width: 110 }} />
+              style={{ ...inputStyle, width: 110 }}
+            />
           : <span style={valueStyle}>€{client.monthlyBudget.toLocaleString()}</span>}
       </Row>
 
-      {/* Team */}
+      {/* ── Team ── */}
       <Row label="Team">
         {editing
           ? <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -131,19 +201,19 @@ export function ClientCard({ client, autoEdit = false, onCancelNew }: Props) {
           : <span style={valueStyle}>{teamNames || '—'}</span>}
       </Row>
 
-      {/* ── Rates (edit only) ─────────────────────────────────────────────── */}
+      {/* ── Rates (edit only) ── */}
       {editing && (
         <div style={{ borderTop: '1px solid #334155', paddingTop: 10, marginTop: 2 }}>
-          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+          <div style={{
+            fontSize: 11, color: '#64748b', fontWeight: 600,
+            textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8,
+          }}>
             Rates (€ / day)
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
             {LEVELS.map(level => (
               <div key={level} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{
-                  fontSize: 12, color: '#94a3b8', textTransform: 'capitalize',
-                  width: 60, flexShrink: 0,
-                }}>
+                <span style={{ fontSize: 12, color: '#94a3b8', textTransform: 'capitalize', width: 60, flexShrink: 0 }}>
                   {level}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -161,7 +231,7 @@ export function ClientCard({ client, autoEdit = false, onCancelNew }: Props) {
         </div>
       )}
 
-      {/* Rates display (view mode — compact) */}
+      {/* ── Rates display (view mode) ── */}
       {!editing && (
         <Row label="Rates">
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -174,13 +244,24 @@ export function ClientCard({ client, autoEdit = false, onCancelNew }: Props) {
         </Row>
       )}
 
-      {/* Color (edit only) */}
+      {/* ── Color (edit only) ── */}
       {editing && (
         <Row label="Color">
-          <input type="color" value={draft.color}
+          <input
+            type="color" value={draft.color}
             onChange={e => setDraft(d => ({ ...d, color: e.target.value }))}
-            style={{ width: 36, height: 28, border: 'none', background: 'none', cursor: 'pointer' }} />
+            style={{ width: 36, height: 28, border: 'none', background: 'none', cursor: 'pointer' }}
+          />
         </Row>
+      )}
+
+      {/* ── Priority Wizard modal ── */}
+      {showWizard && (
+        <PriorityWizard
+          client={draft}
+          onSave={handleWizardSave}
+          onClose={() => setShowWizard(false)}
+        />
       )}
     </div>
   )

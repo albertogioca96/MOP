@@ -59,7 +59,15 @@ export function generateDraft(
 
   const activeClients = clients
     .filter(c => c.isActive)
-    .sort((a, b) => a.priority - b.priority)
+    .sort((a, b) => {
+      // Assessed clients take priority over unassessed ones
+      const aHas = a.priorityScore !== undefined
+      const bHas = b.priorityScore !== undefined
+      if (aHas && bHas)  return b.priorityScore! - a.priorityScore!  // higher score first
+      if (aHas && !bHas) return -1                                    // assessed beats unassessed
+      if (!aHas && bHas) return 1
+      return a.priority - b.priority                                  // fallback: manual number
+    })
 
   for (const client of activeClients) {
     for (const week of weeks) {
